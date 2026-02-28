@@ -1,66 +1,31 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 
-interface Partner {
+interface Property {
   id: number;
   name: string;
-  category: string;
+  slug: string;
   description: string;
-  address: string;
-  is_indoor: number;
-  is_outdoor: number;
-  is_romantic: number;
-  is_family_friendly: number;
-  price_range_min: number;
-  price_range_max: number;
-  commission_percentage: number;
+  location: string;
+  partner_count: number;
+  itinerary_count: number;
+  created_at: string;
 }
 
-const CATEGORY_LABELS: Record<string, string> = {
-  restaurant: 'Restaurant',
-  outdoor_activity: 'Outdoor Activity',
-  wellness: 'Wellness & Spa',
-  entertainment: 'Entertainment',
-  shopping: 'Shopping',
-  cultural: 'Cultural',
-  other: 'Other',
-};
-
-const CATEGORY_COLORS: Record<string, string> = {
-  restaurant: 'bg-amber-100 text-amber-700',
-  outdoor_activity: 'bg-green-100 text-green-700',
-  wellness: 'bg-purple-100 text-purple-700',
-  entertainment: 'bg-blue-100 text-blue-700',
-  shopping: 'bg-pink-100 text-pink-700',
-  cultural: 'bg-orange-100 text-orange-700',
-  other: 'bg-slate-100 text-slate-600',
-};
-
-const DEFAULT_FORM = {
-  name: '',
-  category: 'restaurant',
-  description: '',
-  address: '',
-  is_indoor: true,
-  is_outdoor: false,
-  is_romantic: false,
-  is_family_friendly: true,
-  price_range_min: 20,
-  price_range_max: 100,
-  commission_percentage: 10,
-};
+const DEFAULT_FORM = { name: '', description: '', location: '' };
 
 export default function HostPage() {
-  const [partners, setPartners] = useState<Partner[]>([]);
+  const [properties, setProperties] = useState<Property[]>([]);
   const [form, setForm] = useState(DEFAULT_FORM);
-  const [saving, setSaving] = useState(false);
   const [showForm, setShowForm] = useState(false);
-  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [copiedId, setCopiedId] = useState<number | null>(null);
 
   useEffect(() => {
-    fetch('/api/partners')
+    fetch('/api/properties')
       .then(r => r.json())
-      .then(setPartners)
+      .then(d => setProperties(d as Property[]))
       .catch(console.error);
   }, []);
 
@@ -68,20 +33,25 @@ export default function HostPage() {
     e.preventDefault();
     setSaving(true);
     try {
-      const res = await fetch('/api/partners', {
+      const res = await fetch('/api/properties', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(form),
       });
-      const partner = await res.json() as Partner;
-      setPartners(prev => [...prev, partner]);
+      const property = await res.json() as Property;
+      setProperties(prev => [{ ...property, partner_count: 0, itinerary_count: 0 }, ...prev]);
       setForm(DEFAULT_FORM);
       setShowForm(false);
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
     } finally {
       setSaving(false);
     }
+  };
+
+  const copyShareLink = (property: Property) => {
+    const url = `${window.location.origin}/guest/${property.slug}`;
+    navigator.clipboard.writeText(url);
+    setCopiedId(property.id);
+    setTimeout(() => setCopiedId(null), 2000);
   };
 
   return (
@@ -89,56 +59,43 @@ export default function HostPage() {
       <Navbar />
 
       <div className="max-w-6xl mx-auto px-6 py-10">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-slate-900">Host Configuration</h1>
-              <p className="text-slate-500 mt-1 text-sm">Manage your property's partner businesses to power AI-generated itineraries.</p>
-            </div>
-            <button
-              onClick={() => setShowForm(!showForm)}
-              className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-            >
-              <span className="text-lg leading-none">+</span>
-              Add Partner
-            </button>
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Properties</h1>
+            <p className="text-slate-500 mt-1 text-sm">Each property has its own partner network and shareable guest link.</p>
           </div>
+          <button
+            onClick={() => setShowForm(!showForm)}
+            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            <span className="text-lg leading-none">+</span> Add Property
+          </button>
         </div>
 
-        {saved && (
-          <div className="mb-6 flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 text-sm px-4 py-3 rounded-lg">
-            <span>✓</span> Partner added successfully.
-          </div>
-        )}
-
-        {/* Add Partner Form */}
+        {/* Add Property Form */}
         {showForm && (
           <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-6 mb-8">
-            <h2 className="text-base font-semibold text-slate-800 mb-5">New Partner Business</h2>
+            <h2 className="text-base font-semibold text-slate-800 mb-5">New Property</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Business Name *</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Property Name *</label>
                   <input
                     required
                     value={form.name}
                     onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-                    placeholder="e.g. The Vineyard Table"
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    placeholder="e.g. Lakeside Retreat"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Category *</label>
-                  <select
-                    value={form.category}
-                    onChange={e => setForm(f => ({ ...f, category: e.target.value }))}
+                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Location</label>
+                  <input
+                    value={form.location}
+                    onChange={e => setForm(f => ({ ...f, location: e.target.value }))}
+                    placeholder="e.g. Lake Tahoe, CA"
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    {Object.entries(CATEGORY_LABELS).map(([v, l]) => (
-                      <option key={v} value={v}>{l}</option>
-                    ))}
-                  </select>
+                  />
                 </div>
                 <div className="md:col-span-2">
                   <label className="block text-xs font-medium text-slate-600 mb-1.5">Description</label>
@@ -146,80 +103,18 @@ export default function HostPage() {
                     value={form.description}
                     onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
                     rows={2}
-                    placeholder="Short description of the business..."
+                    placeholder="Brief description of your property..."
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                   />
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Address</label>
-                  <input
-                    value={form.address}
-                    onChange={e => setForm(f => ({ ...f, address: e.target.value }))}
-                    placeholder="123 Main St"
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Commission %</label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={50}
-                    step={0.5}
-                    value={form.commission_percentage}
-                    onChange={e => setForm(f => ({ ...f, commission_percentage: Number(e.target.value) }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Price Range (min $)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={form.price_range_min}
-                    onChange={e => setForm(f => ({ ...f, price_range_min: Number(e.target.value) }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">Price Range (max $)</label>
-                  <input
-                    type="number"
-                    min={0}
-                    value={form.price_range_max}
-                    onChange={e => setForm(f => ({ ...f, price_range_max: Number(e.target.value) }))}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
               </div>
-
-              {/* Flags */}
-              <div className="flex flex-wrap gap-4 pt-1">
-                {[
-                  { key: 'is_indoor', label: 'Indoor' },
-                  { key: 'is_outdoor', label: 'Outdoor' },
-                  { key: 'is_romantic', label: 'Romantic' },
-                  { key: 'is_family_friendly', label: 'Family Friendly' },
-                ].map(({ key, label }) => (
-                  <label key={key} className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
-                    <input
-                      type="checkbox"
-                      checked={form[key as keyof typeof form] as boolean}
-                      onChange={e => setForm(f => ({ ...f, [key]: e.target.checked }))}
-                      className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
-                    />
-                    {label}
-                  </label>
-                ))}
-              </div>
-
-              <div className="flex gap-3 pt-2">
+              <div className="flex gap-3 pt-1">
                 <button
                   type="submit"
                   disabled={saving}
                   className="bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-5 py-2 rounded-lg transition-colors"
                 >
-                  {saving ? 'Saving…' : 'Save Partner'}
+                  {saving ? 'Creating…' : 'Create Property'}
                 </button>
                 <button
                   type="button"
@@ -233,50 +128,54 @@ export default function HostPage() {
           </div>
         )}
 
-        {/* Partner List */}
-        <div>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-sm font-semibold text-slate-700">
-              Partner Businesses <span className="ml-1 bg-slate-100 text-slate-500 text-xs px-2 py-0.5 rounded-full">{partners.length}</span>
-            </h2>
+        {/* Property Grid */}
+        {properties.length === 0 ? (
+          <div className="bg-white rounded-2xl border border-slate-100 p-16 text-center">
+            <p className="text-slate-400 text-sm mb-3">No properties yet.</p>
+            <button onClick={() => setShowForm(true)} className="text-blue-600 text-sm font-medium hover:underline">
+              Create your first property →
+            </button>
           </div>
-
-          {partners.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-100 p-12 text-center">
-              <p className="text-slate-400 text-sm">No partner businesses yet.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {partners.map(p => (
-                <div key={p.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 hover:shadow-md transition-shadow">
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div>
-                      <h3 className="font-semibold text-slate-900 text-sm">{p.name}</h3>
-                      <p className="text-xs text-slate-400 mt-0.5">{p.address}</p>
-                    </div>
-                    <span className={`shrink-0 text-xs font-medium px-2 py-0.5 rounded-full ${CATEGORY_COLORS[p.category] ?? CATEGORY_COLORS.other}`}>
-                      {CATEGORY_LABELS[p.category] ?? p.category}
-                    </span>
-                  </div>
-
-                  <p className="text-xs text-slate-500 leading-relaxed mb-4">{p.description}</p>
-
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-slate-500">${p.price_range_min}–${p.price_range_max} per person</span>
-                    <span className="font-semibold text-emerald-600">{p.commission_percentage}% commission</span>
-                  </div>
-
-                  <div className="flex flex-wrap gap-1 mt-3">
-                    {!!p.is_indoor && <span className="bg-slate-50 text-slate-500 text-xs px-2 py-0.5 rounded-full border border-slate-100">Indoor</span>}
-                    {!!p.is_outdoor && <span className="bg-slate-50 text-slate-500 text-xs px-2 py-0.5 rounded-full border border-slate-100">Outdoor</span>}
-                    {!!p.is_romantic && <span className="bg-rose-50 text-rose-500 text-xs px-2 py-0.5 rounded-full border border-rose-100">Romantic</span>}
-                    {!!p.is_family_friendly && <span className="bg-blue-50 text-blue-500 text-xs px-2 py-0.5 rounded-full border border-blue-100">Family</span>}
-                  </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {properties.map(p => (
+              <div key={p.id} className="bg-white rounded-2xl border border-slate-100 shadow-sm p-5 flex flex-col gap-4 hover:shadow-md transition-shadow">
+                <div>
+                  <h3 className="font-semibold text-slate-900">{p.name}</h3>
+                  {p.location && (
+                    <p className="text-xs text-slate-400 mt-0.5">📍 {p.location}</p>
+                  )}
+                  {p.description && (
+                    <p className="text-xs text-slate-500 mt-2 leading-relaxed line-clamp-2">{p.description}</p>
+                  )}
                 </div>
-              ))}
-            </div>
-          )}
-        </div>
+
+                <div className="flex gap-4 text-xs text-slate-600">
+                  <span><span className="font-semibold text-slate-800">{p.partner_count}</span> partners</span>
+                  <span><span className="font-semibold text-slate-800">{p.itinerary_count}</span> itineraries</span>
+                </div>
+
+                {/* Share link */}
+                <div className="bg-slate-50 rounded-lg px-3 py-2 flex items-center gap-2 border border-slate-100">
+                  <span className="text-xs text-slate-400 truncate flex-1 font-mono">/guest/{p.slug}</span>
+                  <button
+                    onClick={() => copyShareLink(p)}
+                    className="shrink-0 text-xs font-medium text-blue-600 hover:text-blue-700 transition-colors"
+                  >
+                    {copiedId === p.id ? '✓ Copied' : 'Copy link'}
+                  </button>
+                </div>
+
+                <Link
+                  to={`/host/property/${p.id}`}
+                  className="block text-center text-sm font-medium text-blue-600 hover:text-blue-700 border border-blue-100 hover:border-blue-300 bg-blue-50 hover:bg-blue-100 py-2 rounded-lg transition-all"
+                >
+                  Manage property →
+                </Link>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

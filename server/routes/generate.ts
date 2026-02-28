@@ -43,9 +43,12 @@ interface GeneratedItinerary {
 
 router.post('/', async (req: Request, res: Response) => {
   try {
-    const { guest_type, occasion, budget, vibe, indoor_outdoor, weather } = req.body as Record<string, string | number>;
+    const { property_id, guest_type, occasion, budget, vibe, indoor_outdoor, weather } = req.body as Record<string, string | number>;
 
-    const allPartners = db.prepare('SELECT * FROM partner_businesses').all() as PartnerBusiness[];
+    const allPartners = (property_id
+      ? db.prepare('SELECT * FROM partner_businesses WHERE property_id = ?').all(property_id)
+      : db.prepare('SELECT * FROM partner_businesses').all()
+    ) as PartnerBusiness[];
 
     let filtered = allPartners.filter(p => {
       if (indoor_outdoor === 'indoor' && !p.is_indoor) return false;
@@ -137,9 +140,10 @@ Generate a complete day itinerary (4–6 activities) using the partner businesse
 
     const result = db.prepare(`
       INSERT INTO generated_itineraries
-        (guest_type, occasion, budget, vibe, indoor_outdoor, weather, itinerary_json, total_estimated_cost, total_commission, guest_satisfaction_score)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        (property_id, guest_type, occasion, budget, vibe, indoor_outdoor, weather, itinerary_json, total_estimated_cost, total_commission, guest_satisfaction_score)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
+      property_id ?? null,
       guest_type, occasion, budget, vibe, indoor_outdoor, weather,
       JSON.stringify(parsed),
       parsed.total_estimated_cost,

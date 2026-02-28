@@ -7,7 +7,7 @@ export default function Navbar() {
 
   const links = [
     { to: '/host', label: 'Host Config', protected: true },
-    { to: '/guest', label: 'Guest Form', protected: false },
+    // { to: '/guest', label: 'Guest Form', protected: false },
     { to: '/itineraries', label: 'Itineraries', protected: true },
   ];
 

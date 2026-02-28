@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
 import HostPage from './pages/HostPage';
+import PropertyPage from './pages/PropertyPage';
 import GuestPage from './pages/GuestPage';
 import ItineraryPage from './pages/ItineraryPage';
 import ItinerariesPage from './pages/ItinerariesPage';
@@ -19,7 +20,8 @@ export default function App() {
     <Routes>
       <Route path="/" element={<RootRedirect />} />
       <Route path="/host" element={<ProtectedRoute><HostPage /></ProtectedRoute>} />
-      <Route path="/guest" element={<GuestPage />} />
+      <Route path="/host/property/:id" element={<ProtectedRoute><PropertyPage /></ProtectedRoute>} />
+      <Route path="/guest/:slug" element={<GuestPage />} />
       <Route path="/itineraries" element={<ProtectedRoute><ItinerariesPage /></ProtectedRoute>} />
       <Route path="/itinerary/:id" element={<ItineraryPage />} />
     </Routes>
