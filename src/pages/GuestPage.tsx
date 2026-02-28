@@ -142,7 +142,7 @@ export default function GuestPage() {
             <input
               type="range"
               min={50}
-              max={5000}
+              max={3000}
               step={25}
               value={form.budget}
               onChange={e => setForm(f => ({ ...f, budget: Number(e.target.value) }))}
@@ -150,13 +150,13 @@ export default function GuestPage() {
             />
             <div className="flex justify-between text-xs text-slate-400 mt-1">
               <span>$50</span>
-              <span>$5,000</span>
+              <span>$3,000</span>
             </div>
             <div className="mt-3">
               <input
                 type="number"
                 min={50}
-                max={5000}
+                max={3000}
                 value={form.budget}
                 onChange={e => setForm(f => ({ ...f, budget: Number(e.target.value) }))}
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
