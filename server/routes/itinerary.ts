@@ -34,13 +34,26 @@ interface DBRow {
   created_at: string;
 }
 
-router.get('/', (_req: Request, res: Response) => {
-  const rows = db.prepare(`
-    SELECT id, guest_type, occasion, budget, vibe, indoor_outdoor, weather,
-           total_estimated_cost, total_commission, guest_satisfaction_score, created_at
-    FROM generated_itineraries
-    ORDER BY created_at DESC
-  `).all() as Omit<DBRow, 'itinerary_json'>[];
+router.get('/', (req: Request, res: Response) => {
+  const { property_id } = req.query;
+  const rows = property_id
+    ? db.prepare(`
+        SELECT gi.id, gi.guest_type, gi.occasion, gi.budget, gi.vibe, gi.indoor_outdoor, gi.weather,
+               gi.total_estimated_cost, gi.total_commission, gi.guest_satisfaction_score, gi.created_at,
+               gi.property_id, p.name AS property_name
+        FROM generated_itineraries gi
+        LEFT JOIN properties p ON p.id = gi.property_id
+        WHERE gi.property_id = ?
+        ORDER BY gi.created_at DESC
+      `).all(property_id)
+    : db.prepare(`
+        SELECT gi.id, gi.guest_type, gi.occasion, gi.budget, gi.vibe, gi.indoor_outdoor, gi.weather,
+               gi.total_estimated_cost, gi.total_commission, gi.guest_satisfaction_score, gi.created_at,
+               gi.property_id, p.name AS property_name
+        FROM generated_itineraries gi
+        LEFT JOIN properties p ON p.id = gi.property_id
+        ORDER BY gi.created_at DESC
+      `).all();
   res.json(rows);
 });
 

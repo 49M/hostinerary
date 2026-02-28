@@ -2,6 +2,12 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import Navbar from '../components/Navbar';
 
+interface Property {
+  id: number;
+  name: string;
+  slug: string;
+}
+
 interface ItinerarySummary {
   id: number;
   guest_type: string;
@@ -14,6 +20,8 @@ interface ItinerarySummary {
   total_commission: number;
   guest_satisfaction_score: number;
   created_at: string;
+  property_id: number | null;
+  property_name: string | null;
 }
 
 const OCCASION_LABELS: Record<string, string> = {
@@ -45,20 +53,33 @@ function timeAgo(dateStr: string) {
 }
 
 export default function ItinerariesPage() {
-  const [itineraries, setItineraries] = useState<ItinerarySummary[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [itineraries, setItineraries] = useState<ItinerarySummary[] | null>(null);
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [selectedPropertyId, setSelectedPropertyId] = useState<number | null>(null);
 
   useEffect(() => {
-    fetch('/api/itinerary')
+    fetch('/api/properties')
       .then(r => r.json())
-      .then(d => setItineraries(d as ItinerarySummary[]))
-      .finally(() => setLoading(false));
+      .then(d => setProperties(d as Property[]))
+      .catch(console.error);
   }, []);
 
-  const totalCommission = itineraries.reduce((sum, i) => sum + (i.total_commission ?? 0), 0);
-  const totalSpend = itineraries.reduce((sum, i) => sum + (i.total_estimated_cost ?? 0), 0);
-  const avgScore = itineraries.length
-    ? Math.round(itineraries.reduce((sum, i) => sum + (i.guest_satisfaction_score ?? 0), 0) / itineraries.length)
+  useEffect(() => {
+    const url = selectedPropertyId
+      ? `/api/itinerary?property_id=${selectedPropertyId}`
+      : '/api/itinerary';
+    fetch(url)
+      .then(r => r.json())
+      .then(d => setItineraries(d as ItinerarySummary[]));
+  }, [selectedPropertyId]);
+
+  const loading = itineraries === null;
+
+  const list = itineraries ?? [];
+  const totalCommission = list.reduce((sum, i) => sum + (i.total_commission ?? 0), 0);
+  const totalSpend = list.reduce((sum, i) => sum + (i.total_estimated_cost ?? 0), 0);
+  const avgScore = list.length
+    ? Math.round(list.reduce((sum, i) => sum + (i.guest_satisfaction_score ?? 0), 0) / list.length)
     : 0;
 
   return (
@@ -71,20 +92,43 @@ export default function ItinerariesPage() {
             <h1 className="text-2xl font-bold text-slate-900">Itineraries</h1>
             <p className="text-slate-500 mt-1 text-sm">All generated guest itineraries and their revenue.</p>
           </div>
-          <Link
-            to="/guest"
-            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
-          >
-            + New Itinerary
-          </Link>
         </div>
 
+        {/* Property filter tabs */}
+        {properties.length > 0 && (
+          <div className="flex items-center gap-2 mb-6 flex-wrap">
+            <button
+              onClick={() => setSelectedPropertyId(null)}
+              className={`text-sm px-3 py-1.5 rounded-lg border font-medium transition-all ${
+                selectedPropertyId === null
+                  ? 'bg-blue-600 text-white border-blue-600'
+                  : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-700'
+              }`}
+            >
+              All Properties
+            </button>
+            {properties.map(p => (
+              <button
+                key={p.id}
+                onClick={() => setSelectedPropertyId(p.id)}
+                className={`text-sm px-3 py-1.5 rounded-lg border font-medium transition-all ${
+                  selectedPropertyId === p.id
+                    ? 'bg-blue-600 text-white border-blue-600'
+                    : 'bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-700'
+                }`}
+              >
+                {p.name}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Summary stats */}
-        {itineraries.length > 0 && (
+        {list.length > 0 && (
           <div className="grid grid-cols-3 gap-4 mb-8">
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
               <p className="text-xs text-slate-500 font-medium">Total Itineraries</p>
-              <p className="text-2xl font-bold text-slate-900 mt-1">{itineraries.length}</p>
+              <p className="text-2xl font-bold text-slate-900 mt-1">{list.length}</p>
             </div>
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
               <p className="text-xs text-slate-500 font-medium">Total Guest Spend</p>
@@ -99,16 +143,13 @@ export default function ItinerariesPage() {
 
         {loading ? (
           <div className="text-slate-400 text-sm py-12 text-center">Loading…</div>
-        ) : itineraries.length === 0 ? (
+        ) : list.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-100 p-16 text-center">
-            <p className="text-slate-400 text-sm mb-4">No itineraries generated yet.</p>
-            <Link to="/guest" className="text-blue-600 text-sm font-medium hover:underline">
-              Generate your first itinerary →
-            </Link>
+            <p className="text-slate-400 text-sm mb-4">No itineraries yet{selectedPropertyId ? ' for this property' : ''}.</p>
           </div>
         ) : (
           <div className="space-y-3">
-            {itineraries.map(item => (
+            {list.map(item => (
               <Link
                 key={item.id}
                 to={`/itinerary/${item.id}`}
@@ -124,9 +165,16 @@ export default function ItinerariesPage() {
                   <p className="text-sm font-semibold text-slate-800 capitalize">
                     {item.guest_type} · {item.vibe} vibe
                   </p>
-                  <p className="text-xs text-slate-400 mt-0.5 capitalize">
-                    {item.indoor_outdoor} · {item.weather} · Budget ${item.budget}
-                  </p>
+                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                    <p className="text-xs text-slate-400 capitalize">
+                      {item.indoor_outdoor} · {item.weather} · Budget ${item.budget}
+                    </p>
+                    {item.property_name && selectedPropertyId === null && (
+                      <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+                        {item.property_name}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
                 {/* Metrics */}
