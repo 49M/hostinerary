@@ -71,6 +71,30 @@ try { db.exec('ALTER TABLE generated_itineraries ADD COLUMN property_id INTEGER 
 try { db.exec('ALTER TABLE generated_itineraries ADD COLUMN check_in TEXT'); } catch { /* already exists */ }
 try { db.exec('ALTER TABLE generated_itineraries ADD COLUMN check_out TEXT'); } catch { /* already exists */ }
 
+db.exec(`
+  CREATE TABLE IF NOT EXISTS chat_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    itinerary_id INTEGER NOT NULL REFERENCES generated_itineraries(id),
+    role TEXT NOT NULL CHECK(role IN ('user', 'assistant')),
+    content TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS coupon_codes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code TEXT NOT NULL UNIQUE,
+    itinerary_id INTEGER NOT NULL REFERENCES generated_itineraries(id),
+    item_index INTEGER NOT NULL,
+    partner_name TEXT NOT NULL,
+    activity_name TEXT NOT NULL,
+    commission_percentage REAL NOT NULL DEFAULT 0,
+    redeemed INTEGER DEFAULT 0,
+    redeemed_at TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(itinerary_id, item_index)
+  );
+`);
+
 // ── Seed default property ────────────────────────────────────────────────────
 
 const { propCount } = db.prepare('SELECT COUNT(*) as propCount FROM properties').get() as { propCount: number };

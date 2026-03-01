@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
+import { useAuth0 } from '@auth0/auth0-react';
 import ReactMarkdown from 'react-markdown';
 import Navbar from '../components/Navbar';
 
@@ -13,6 +14,8 @@ interface ItineraryItem {
   partner_name: string;
   category: string;
   address?: string;
+  coupon_code?: string;
+  coupon_redeemed?: boolean;
 }
 
 interface CommissionBreakdown {
@@ -21,6 +24,8 @@ interface CommissionBreakdown {
   estimated_cost: number;
   commission_rate: number;
   commission_amount: number;
+  coupon_code: string | null;
+  coupon_redeemed: boolean;
 }
 
 interface ItineraryData {
@@ -127,21 +132,31 @@ function ChatPanel({ itineraryId, propertyLocation }: { itineraryId: number; pro
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
-  // Initialize thread on mount
+  // Load persisted messages + initialize thread on mount
   useEffect(() => {
-    fetch('/api/chat/thread', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ itinerary_id: itineraryId }),
-    })
-      .then(r => r.json())
-      .then((d: { thread_id?: string; error?: string }) => {
-        if (d.error) throw new Error(d.error);
-        setThreadId(d.thread_id!);
+    Promise.all([
+      fetch(`/api/chat/messages/${itineraryId}`).then(r => r.json()) as Promise<ChatMessage[]>,
+      fetch('/api/chat/thread', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ itinerary_id: itineraryId }),
+      }).then(r => r.json()) as Promise<{ thread_id?: string; error?: string }>,
+    ])
+      .then(([history, thread]) => {
+        if (thread.error) throw new Error(thread.error);
+        setMessages(history);
+        setThreadId(thread.thread_id!);
       })
       .catch(err => setError(err.message ?? 'Could not start AI chat session.'))
       .finally(() => setInitializing(false));
   }, [itineraryId]);
+
+  const saveMessage = (role: 'user' | 'assistant', content: string) =>
+    fetch('/api/chat/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ itinerary_id: itineraryId, role, content }),
+    }).catch(() => { /* non-blocking */ });
 
   const send = async (text: string) => {
     const trimmed = text.trim();
@@ -149,6 +164,7 @@ function ChatPanel({ itineraryId, propertyLocation }: { itineraryId: number; pro
 
     setInput('');
     setMessages(prev => [...prev, { role: 'user', content: trimmed }]);
+    saveMessage('user', trimmed);
     setLoading(true);
     setStreamingContent(null);
     setError('');
@@ -195,6 +211,7 @@ function ChatPanel({ itineraryId, propertyLocation }: { itineraryId: number; pro
       }
 
       setMessages(prev => [...prev, { role: 'assistant', content: full }]);
+      if (full) saveMessage('assistant', full);
       setStreamingContent(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.');
@@ -341,11 +358,196 @@ function ChatPanel({ itineraryId, propertyLocation }: { itineraryId: number; pro
   );
 }
 
+function CouponBadge({ code, redeemed, isHost }: { code: string; redeemed: boolean; isHost: boolean }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = () => {
+    navigator.clipboard.writeText(code);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className={`mt-3 pt-3 border-t border-slate-100 flex items-center justify-between gap-3 ${redeemed ? 'opacity-60' : ''}`}>
+      <div>
+        <p className="text-xs text-slate-400 mb-0.5">
+          {redeemed ? 'Discount code · redeemed' : 'Your discount code — show at venue'}
+        </p>
+        <span className="font-mono text-base font-bold tracking-widest text-slate-900">{code}</span>
+      </div>
+      <div className="flex items-center gap-2 shrink-0">
+        {isHost && redeemed && (
+          <span className="text-xs bg-emerald-50 text-emerald-600 border border-emerald-100 px-2 py-0.5 rounded-full font-medium">Redeemed</span>
+        )}
+        {!redeemed && (
+          <button
+            onClick={copy}
+            className="text-xs text-blue-600 hover:text-blue-700 border border-blue-200 hover:bg-blue-50 px-3 py-1.5 rounded-lg transition-colors font-medium"
+          >
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const CATEGORY_OPTIONS = [
+  { value: 'restaurant', label: 'Restaurant' },
+  { value: 'outdoor_activity', label: 'Outdoor Activity' },
+  { value: 'wellness', label: 'Wellness' },
+  { value: 'entertainment', label: 'Entertainment' },
+  { value: 'shopping', label: 'Shopping' },
+  { value: 'cultural', label: 'Cultural' },
+  { value: 'other', label: 'Other' },
+];
+
+function AddPartnerModal({
+  itineraryId,
+  itemIndex,
+  item,
+  onClose,
+  onSaved,
+}: {
+  itineraryId: number;
+  itemIndex: number;
+  item: ItineraryItem;
+  onClose: () => void;
+  onSaved: (partnerName: string, totalCommission: number, couponCode: string) => void;
+}) {
+  const [name, setName] = useState(item.partner_name ?? '');
+  const [category, setCategory] = useState(item.category ?? 'other');
+  const [commission, setCommission] = useState('10');
+  const [address, setAddress] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const save = async () => {
+    if (!name.trim()) { setError('Partner name is required.'); return; }
+    setSaving(true);
+    setError('');
+    try {
+      const res = await fetch(`/api/itinerary/${itineraryId}/item`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          itemIndex,
+          partner: {
+            name: name.trim(),
+            category,
+            commission_percentage: parseFloat(commission) || 0,
+            address: address.trim() || undefined,
+          },
+        }),
+      });
+      if (!res.ok) throw new Error('Failed to save partner.');
+      const d = await res.json() as { partner: { name: string }; total_commission: number; coupon_code: string };
+      onSaved(d.partner.name, d.total_commission, d.coupon_code);
+      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Something went wrong.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white rounded-2xl shadow-xl w-full max-w-md p-6"
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between mb-5">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">
+              {item.partner_name ? 'Edit Partner' : 'Add Partner'}
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5 truncate max-w-xs">{item.activity_name}</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none ml-4">×</button>
+        </div>
+
+        <div className="space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">Partner Name *</label>
+            <input
+              type="text"
+              value={name}
+              onChange={e => setName(e.target.value)}
+              placeholder="e.g. The Vineyard Table"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              autoFocus
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">Category</label>
+            <select
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              {CATEGORY_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">Commission %</label>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.5"
+              value={commission}
+              onChange={e => setCommission(e.target.value)}
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-700 mb-1">
+              Address <span className="text-slate-400 font-normal">(optional)</span>
+            </label>
+            <input
+              type="text"
+              value={address}
+              onChange={e => setAddress(e.target.value)}
+              placeholder="e.g. 24 Harvest Lane"
+              className="w-full rounded-lg border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        {error && <p className="text-xs text-red-500 mt-3">{error}</p>}
+
+        <div className="flex items-center gap-2 mt-6">
+          <button
+            onClick={save}
+            disabled={saving}
+            className="flex-1 bg-slate-900 hover:bg-slate-800 disabled:opacity-50 text-white text-sm font-medium py-2.5 rounded-lg transition-colors"
+          >
+            {saving ? 'Saving…' : item.partner_name ? 'Update Partner' : 'Add Partner'}
+          </button>
+          <button
+            onClick={onClose}
+            className="px-4 py-2.5 text-sm text-slate-600 hover:text-slate-900 border border-slate-200 rounded-lg transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ItineraryPage() {
   const { id } = useParams<{ id: string }>();
+  const { isAuthenticated } = useAuth0();
   const [data, setData] = useState<ItineraryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [selectedDay, setSelectedDay] = useState(1);
+  const [partnerModal, setPartnerModal] = useState<{ itemIndex: number; item: ItineraryItem } | null>(null);
 
   const [satisfaction, setSatisfaction] = useState(0);
   const [budgetAccuracy, setBudgetAccuracy] = useState(0);
@@ -426,7 +628,7 @@ export default function ItineraryPage() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className={`grid grid-cols-1 gap-6 ${isAuthenticated ? 'lg:grid-cols-3' : ''}`}>
 
           {/* Section 1: Timeline */}
           <div className="lg:col-span-2">
@@ -435,28 +637,36 @@ export default function ItineraryPage() {
               Timeline
             </h2>
 
-            <div className="space-y-8">
-              {groupByDay(data.itinerary).map(({ dayNum, date, items }) => (
-                <div key={dayNum}>
-                  {/* Day header */}
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="shrink-0 w-7 h-7 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center">
-                      {dayNum}
+            {(() => {
+              const days = groupByDay(data.itinerary);
+              const activeDay = days.find(d => d.dayNum === selectedDay) ?? days[0];
+              return (
+                <>
+                  {/* Day tabs — only shown for multi-day itineraries */}
+                  {days.length > 1 && (
+                    <div className="flex items-center gap-1 mb-5 flex-wrap">
+                      {days.map(({ dayNum, date }) => (
+                        <button
+                          key={dayNum}
+                          onClick={() => setSelectedDay(dayNum)}
+                          className={`text-sm px-3 py-1.5 rounded-lg border font-medium transition-all ${
+                            (activeDay.dayNum === dayNum)
+                              ? 'bg-slate-800 text-white border-slate-800'
+                              : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400 hover:text-slate-900'
+                          }`}
+                        >
+                          Day {dayNum}
+                          {date && <span className="ml-1.5 text-xs opacity-70">{new Date(date + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                        </button>
+                      ))}
                     </div>
-                    <div>
-                      <p className="text-sm font-semibold text-slate-800">Day {dayNum}</p>
-                      {date && (
-                        <p className="text-xs text-slate-400">{formatDate(date)}</p>
-                      )}
-                    </div>
-                    <div className="flex-1 h-px bg-slate-100" />
-                  </div>
+                  )}
 
-                  {/* Day items */}
+                  {/* Active day items */}
                   <div className="relative pl-0">
                     <div className="absolute left-[19px] top-4 bottom-4 w-px bg-slate-200" />
                     <div className="space-y-4">
-                      {items.map((item, i) => (
+                      {activeDay.items.map((item, i) => (
                         <div key={i} className="relative flex gap-4">
                           <div className="shrink-0 w-10 h-10 rounded-full bg-white border-2 border-blue-200 flex items-center justify-center text-base z-10 shadow-sm">
                             {CATEGORY_ICONS[item.category] ?? '📍'}
@@ -481,19 +691,30 @@ export default function ItineraryPage() {
                                   <span>Partner · {item.partner_name}</span>
                                 </div>
                               )}
+                              {isAuthenticated && (
+                                <button
+                                  onClick={() => setPartnerModal({ itemIndex: data.itinerary.indexOf(item), item })}
+                                  className="ml-auto text-xs text-slate-400 hover:text-blue-600 border border-slate-200 hover:border-blue-300 px-2 py-0.5 rounded-full transition-colors"
+                                >
+                                  {item.partner_name ? 'Edit partner' : '+ Add partner'}
+                                </button>
+                              )}
                             </div>
+                            {item.coupon_code && (
+                              <CouponBadge code={item.coupon_code} redeemed={!!item.coupon_redeemed} isHost={isAuthenticated} />
+                            )}
                           </div>
                         </div>
                       ))}
                     </div>
                   </div>
-                </div>
-              ))}
-            </div>
+                </>
+              );
+            })()}
           </div>
 
-          {/* Section 2: Revenue Dashboard */}
-          <div className="space-y-4">
+          {/* Section 2: Revenue Dashboard (hosts only) */}
+          {isAuthenticated && <div className="space-y-4">
             <h2 className="text-sm font-semibold text-slate-700 mb-4 flex items-center gap-2">
               <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-xs flex items-center justify-center">2</span>
               Revenue Dashboard
@@ -545,16 +766,24 @@ export default function ItineraryPage() {
             {/* Commission breakdown */}
             <div className="bg-white rounded-2xl border border-slate-100 shadow-sm p-4">
               <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide mb-3">Commission Breakdown</p>
-              <div className="space-y-2.5">
+              <div className="space-y-3">
                 {data.commission_breakdown.map((row, i) => (
-                  <div key={i} className="flex items-center justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-slate-800 truncate">{row.partner_name || '—'}</p>
-                      <p className="text-xs text-slate-400">{row.commission_rate}% of ${row.estimated_cost}</p>
+                  <div key={i} className={row.coupon_redeemed ? 'opacity-75' : ''}>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="text-xs font-medium text-slate-800 truncate">{row.partner_name || '—'}</p>
+                        <p className="text-xs text-slate-400">{row.commission_rate}% of ${row.estimated_cost}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {row.coupon_redeemed && (
+                          <span className="text-xs bg-emerald-50 text-emerald-600 px-1.5 py-0.5 rounded font-medium">Paid</span>
+                        )}
+                        <span className="text-xs font-semibold text-emerald-600">+${row.commission_amount.toFixed(2)}</span>
+                      </div>
                     </div>
-                    <span className="shrink-0 text-xs font-semibold text-emerald-600">
-                      +${row.commission_amount.toFixed(2)}
-                    </span>
+                    {row.coupon_code && (
+                      <p className="text-xs text-slate-400 mt-0.5 font-mono">{row.coupon_code}</p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -563,7 +792,7 @@ export default function ItineraryPage() {
                 <span className="text-sm font-bold text-emerald-600">${data.total_commission.toFixed(2)}</span>
               </div>
             </div>
-          </div>
+          </div>}
         </div>
 
         {/* Section 3: AI Concierge Chat */}
@@ -613,6 +842,23 @@ export default function ItineraryPage() {
         </div>
 
       </div>
+
+      {partnerModal && (
+        <AddPartnerModal
+          itineraryId={data.id}
+          itemIndex={partnerModal.itemIndex}
+          item={partnerModal.item}
+          onClose={() => setPartnerModal(null)}
+          onSaved={(partnerName, totalCommission, couponCode) => {
+            setData(prev => {
+              if (!prev) return prev;
+              const newItinerary = [...prev.itinerary];
+              newItinerary[partnerModal.itemIndex] = { ...newItinerary[partnerModal.itemIndex], partner_name: partnerName, coupon_code: couponCode };
+              return { ...prev, itinerary: newItinerary, total_commission: totalCommission };
+            });
+          }}
+        />
+      )}
     </div>
   );
 }

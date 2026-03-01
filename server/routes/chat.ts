@@ -29,6 +29,26 @@ interface ItineraryItem {
   partner_name: string;
 }
 
+// GET /api/chat/messages/:itinerary_id  — load persisted messages for an itinerary
+router.get('/messages/:itinerary_id', (req: Request, res: Response) => {
+  const rows = db.prepare(
+    'SELECT role, content FROM chat_messages WHERE itinerary_id = ? ORDER BY created_at ASC'
+  ).all(req.params.itinerary_id) as { role: string; content: string }[];
+  res.json(rows);
+});
+
+// POST /api/chat/messages  — persist a single message
+router.post('/messages', (req: Request, res: Response) => {
+  const { itinerary_id, role, content } = req.body as { itinerary_id: number; role: string; content: string };
+  if (!itinerary_id || !role || !content) {
+    return res.status(400).json({ error: 'itinerary_id, role, and content are required.' });
+  }
+  db.prepare(
+    'INSERT INTO chat_messages (itinerary_id, role, content) VALUES (?, ?, ?)'
+  ).run(itinerary_id, role, content);
+  res.status(201).json({ success: true });
+});
+
 // POST /api/chat/thread  — create a Backboard thread for an itinerary
 router.post('/thread', async (req: Request, res: Response) => {
   const { itinerary_id } = req.body as { itinerary_id: number };

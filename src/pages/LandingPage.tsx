@@ -4,9 +4,6 @@ import { useAuth0 } from '@auth0/auth0-react';
 function CommissionCalc() {
   const [stays, setStays] = useState(20);
   const [rate, setRate] = useState(15);
-  const perStay = Math.round(stays * 0 + 180 * (rate / 15));
-  const monthly = Math.round(stays * perStay / 5);
-
   // simpler: $36 avg per stay at 15%, scales linearly
   const avgPerStay = Math.round(36 * (rate / 15));
   const monthlyTotal = stays * avgPerStay;

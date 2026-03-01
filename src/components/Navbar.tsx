@@ -15,7 +15,7 @@ export default function Navbar() {
     <nav className="bg-white border-b border-slate-100 sticky top-0 z-50">
       <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between">
         <Link to="/host" className="flex items-center gap-2 font-semibold text-slate-900 tracking-tight">
-          <span className="bg-blue-600 text-white text-xs font-bold px-2 py-0.5 rounded">H</span>
+          <img src="/logo2.png" alt="Hostinerary" className="h-6 w-auto" />
           Hostinerary
         </Link>
         <div className="flex items-center gap-1">
