@@ -5,10 +5,10 @@
 [build.environment]
   SECRETS_SCAN_OMIT_KEYS = "VITE_AUTH0_CLIENT_ID,VITE_AUTH0_DOMAIN"
 
-# Proxy /api/* to the Render backend (set RENDER_API_URL in Netlify env vars)
+# Proxy /api/* to the Render backend
 [[redirects]]
   from = "/api/*"
-  to = ":RENDER_API_URL/api/:splat"
+  to = "https://hostinerary.onrender.com/api/:splat"
   status = 200
   force = true
 
