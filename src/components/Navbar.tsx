@@ -3,7 +3,7 @@ import { useAuth0 } from '@auth0/auth0-react';
 
 export default function Navbar() {
   const { pathname } = useLocation();
-  const { isAuthenticated, isLoading, user, loginWithRedirect, logout } = useAuth0();
+  const { isAuthenticated, isLoading, user, logout } = useAuth0();
 
   const links = [
     { to: '/host', label: 'Host Config', protected: true },

@@ -8,6 +8,7 @@ import propertiesRouter from './routes/properties.js';
 import partnersRouter from './routes/partners.js';
 import generateRouter from './routes/generate.js';
 import itineraryRouter from './routes/itinerary.js';
+import chatRouter from './routes/chat.js';
 
 const app = express();
 const PORT = 3001;
@@ -19,6 +20,7 @@ app.use('/api/properties', propertiesRouter);
 app.use('/api/partners', partnersRouter);
 app.use('/api/generate', generateRouter);
 app.use('/api/itinerary', itineraryRouter);
+app.use('/api/chat', chatRouter);
 
 app.listen(PORT, () => {
   console.log(`✓ API server running on http://localhost:${PORT}`);

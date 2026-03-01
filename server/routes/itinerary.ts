@@ -32,6 +32,8 @@ interface DBRow {
   total_commission: number;
   guest_satisfaction_score: number;
   created_at: string;
+  check_in: string | null;
+  check_out: string | null;
 }
 
 router.get('/', (req: Request, res: Response) => {
@@ -40,7 +42,7 @@ router.get('/', (req: Request, res: Response) => {
     ? db.prepare(`
         SELECT gi.id, gi.guest_type, gi.occasion, gi.budget, gi.vibe, gi.indoor_outdoor, gi.weather,
                gi.total_estimated_cost, gi.total_commission, gi.guest_satisfaction_score, gi.created_at,
-               gi.property_id, p.name AS property_name
+               gi.property_id, gi.check_in, gi.check_out, p.name AS property_name
         FROM generated_itineraries gi
         LEFT JOIN properties p ON p.id = gi.property_id
         WHERE gi.property_id = ?
@@ -49,7 +51,7 @@ router.get('/', (req: Request, res: Response) => {
     : db.prepare(`
         SELECT gi.id, gi.guest_type, gi.occasion, gi.budget, gi.vibe, gi.indoor_outdoor, gi.weather,
                gi.total_estimated_cost, gi.total_commission, gi.guest_satisfaction_score, gi.created_at,
-               gi.property_id, p.name AS property_name
+               gi.property_id, gi.check_in, gi.check_out, p.name AS property_name
         FROM generated_itineraries gi
         LEFT JOIN properties p ON p.id = gi.property_id
         ORDER BY gi.created_at DESC
@@ -58,7 +60,12 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 router.get('/:id', (req: Request, res: Response) => {
-  const row = db.prepare('SELECT * FROM generated_itineraries WHERE id = ?').get(req.params.id) as DBRow | undefined;
+  const row = db.prepare(`
+    SELECT gi.*, p.name AS property_name, p.location AS property_location, p.slug AS property_slug
+    FROM generated_itineraries gi
+    LEFT JOIN properties p ON p.id = gi.property_id
+    WHERE gi.id = ?
+  `).get(req.params.id) as (DBRow & { property_name: string | null; property_location: string | null; property_slug: string | null }) | undefined;
 
   if (!row) return res.status(404).json({ error: 'Itinerary not found' });
 
@@ -89,6 +96,11 @@ router.get('/:id', (req: Request, res: Response) => {
     total_commission: row.total_commission,
     guest_satisfaction_score: row.guest_satisfaction_score,
     created_at: row.created_at,
+    check_in: row.check_in,
+    check_out: row.check_out,
+    property_name: row.property_name,
+    property_location: row.property_location,
+    property_slug: row.property_slug,
     ...parsed,
     commission_breakdown: commissionBreakdown,
   });

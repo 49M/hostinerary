@@ -68,6 +68,8 @@ db.exec(`
 
 try { db.exec('ALTER TABLE partner_businesses ADD COLUMN property_id INTEGER REFERENCES properties(id)'); } catch { /* already exists */ }
 try { db.exec('ALTER TABLE generated_itineraries ADD COLUMN property_id INTEGER REFERENCES properties(id)'); } catch { /* already exists */ }
+try { db.exec('ALTER TABLE generated_itineraries ADD COLUMN check_in TEXT'); } catch { /* already exists */ }
+try { db.exec('ALTER TABLE generated_itineraries ADD COLUMN check_out TEXT'); } catch { /* already exists */ }
 
 // ── Seed default property ────────────────────────────────────────────────────
 

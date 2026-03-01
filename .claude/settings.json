@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node -e \"const p = require\\(''./node_modules/openai/package.json''\\); console.log\\(p.version\\)\")",
+      "Bash(lsof -ti :5173)",
+      "Bash(xargs kill -9)"
+    ]
+  }
+}

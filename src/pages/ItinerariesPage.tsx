@@ -22,6 +22,8 @@ interface ItinerarySummary {
   created_at: string;
   property_id: number | null;
   property_name: string | null;
+  check_in: string | null;
+  check_out: string | null;
 }
 
 const OCCASION_LABELS: Record<string, string> = {
@@ -41,6 +43,13 @@ const OCCASION_COLORS: Record<string, string> = {
   business: 'bg-slate-50 text-slate-600 border-slate-200',
   casual: 'bg-green-50 text-green-600 border-green-100',
 };
+
+function formatDateRange(checkIn: string | null, checkOut: string | null): string | null {
+  if (!checkIn || !checkOut) return null;
+  const fmt = (d: string) => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const nights = Math.round((new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000);
+  return `${fmt(checkIn)} – ${fmt(checkOut)} · ${nights} ${nights === 1 ? 'night' : 'nights'}`;
+}
 
 function timeAgo(dateStr: string) {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -92,6 +101,16 @@ export default function ItinerariesPage() {
             <h1 className="text-2xl font-bold text-slate-900">Itineraries</h1>
             <p className="text-slate-500 mt-1 text-sm">All generated guest itineraries and their revenue.</p>
           </div>
+          <Link
+            to={
+              selectedPropertyId
+                ? `/guest/${properties.find(p => p.id === selectedPropertyId)?.slug ?? ''}`
+                : '/host'
+            }
+            className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            + New Itinerary
+          </Link>
         </div>
 
         {/* Property filter tabs */}
@@ -169,6 +188,11 @@ export default function ItinerariesPage() {
                     <p className="text-xs text-slate-400 capitalize">
                       {item.indoor_outdoor} · {item.weather} · Budget ${item.budget}
                     </p>
+                    {formatDateRange(item.check_in, item.check_out) && (
+                      <span className="text-xs text-slate-500">
+                        {formatDateRange(item.check_in, item.check_out)}
+                      </span>
+                    )}
                     {item.property_name && selectedPropertyId === null && (
                       <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
                         {item.property_name}
